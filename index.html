@@ -68,20 +68,33 @@
                 
                 <!-- DASHBOARD VIEW -->
                 <div id="viewDashboard">
-                    <div class="flex justify-between items-center mb-6">
+                    <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
                         <h2 class="text-2xl font-bold">Dashboard</h2>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 items-center flex-wrap">
+                            <button onclick="setDashView('bulanan')" id="btnBulanan" class="px-4 py-2 rounded bg-blue-600 text-white text-sm font-bold">Bulanan</button>
+                            <button onclick="setDashView('tahunan')" id="btnTahunan" class="px-4 py-2 rounded bg-gray-200 text-sm font-bold">Tahunan</button>
+                            
                             <select id="filterBulan" class="border rounded p-2 text-sm" onchange="loadDashboard()"></select>
                             <select id="filterTahun" class="border rounded p-2 text-sm" onchange="loadDashboard()"></select>
                         </div>
                     </div>
+                    
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" id="summaryCards"></div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartProject"></canvas></div>
-                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartAkun"></canvas></div>
+                    
+                    <!-- Charts Bulanan -->
+                    <div id="chartsBulanan" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartMasukProject"></canvas></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartKeluarProject"></canvas></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartMasukAkun"></canvas></div>
+                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartKeluarAkun"></canvas></div>
+                    </div>
+
+                    <!-- Charts Tahunan -->
+                    <div id="chartsTahunan" class="hidden">
+                        <div class="bg-white p-4 rounded-lg shadow"><canvas id="chartTahunan"></canvas></div>
                     </div>
                 </div>
-
+                
                 <!-- TRANSACTIONS VIEW -->
                 <div id="viewTransactions" class="hidden">
                     <div class="flex justify-between items-center mb-6">
@@ -205,7 +218,11 @@
     let appOptions = { jenisProject: [], akun: [] };
     let chartProjectInstance = null;
     let chartAkunInstance = null;
-
+    let chartMasukProjectInstance = null;
+    let chartMasukAkunInstance = null;
+    let chartTahunanInstance = null;
+    let dashViewMode = 'bulanan'; // Default view
+    
     // --- AUTENTIKASI GOOGLE ---
     function handleGoogleLogin(response) {
         const responsePayload = jwt_decode(response.credential);
@@ -282,7 +299,8 @@
 
         loadOptions();
         populateFilters();
-        showView('dashboard');
+        showView('dashboard'); 
+        setDashView('bulanan'); // Tambahkan ini
     }
 
     // --- NAVIGASI ---
@@ -313,7 +331,9 @@
         appOptions.akun.forEach(a => aSel.innerHTML += `<option value="${a}">${a}</option>`);
     }
 
-    // --- DASHBOARD ---
+    // --- FUNGSI DASHBOARD BARU ---
+
+    // 1. Set Filter & Toggle Tampilan
     function populateFilters() {
         const bulanSel = document.getElementById('filterBulan');
         const tahunSel = document.getElementById('filterTahun');
@@ -331,30 +351,54 @@
         }
     }
 
+    function setDashView(mode) {
+        dashViewMode = mode;
+        const btnBulanan = document.getElementById('btnBulanan');
+        const btnTahunan = document.getElementById('btnTahunan');
+        const divBulan = document.getElementById('filterBulan');
+        
+        if(mode === 'tahunan') {
+            btnBulanan.className = "px-4 py-2 rounded bg-gray-200 text-sm font-bold";
+            btnTahunan.className = "px-4 py-2 rounded bg-blue-600 text-white text-sm font-bold";
+            divBulan.classList.add('hidden'); // Sembunyikan filter bulan
+            document.getElementById('chartsBulanan').classList.add('hidden');
+            document.getElementById('chartsTahunan').classList.remove('hidden');
+        } else {
+            btnBulanan.className = "px-4 py-2 rounded bg-blue-600 text-white text-sm font-bold";
+            btnTahunan.className = "px-4 py-2 rounded bg-gray-200 text-sm font-bold";
+            divBulan.classList.remove('hidden'); // Tampilkan filter bulan
+            document.getElementById('chartsBulanan').classList.remove('hidden');
+            document.getElementById('chartsTahunan').classList.add('hidden');
+        }
+        loadDashboard();
+    }
+
+    // 2. Load Dashboard Utama
     async function loadDashboard() {
         const bulan = document.getElementById('filterBulan').value;
         const tahun = document.getElementById('filterTahun').value;
         
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({action: 'getTransactions', bulan, tahun}) });
+        // Kirim request ke backend
+        const res = await fetch(WEB_APP_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({
+                action: 'getTransactions', 
+                bulan: dashViewMode === 'tahunan' ? 0 : bulan, // 0 = ambil semua bulan
+                tahun: tahun
+            }) 
+        });
         const data = await res.json();
         
         if(data.status !== 'success') return;
         const trans = data.data;
 
         let totalMasuk = 0, totalKeluar = 0;
-        const projectMap = {};
-        const akunMap = {};
-
         trans.forEach(t => {
-            const masuk = Number(t.Masuk) || 0;
-            const keluar = Number(t.Keluar) || 0;
-            totalMasuk += masuk;
-            totalKeluar += keluar;
-
-            projectMap[t.JenisProject] = (projectMap[t.JenisProject] || 0) + keluar;
-            akunMap[t.Akun] = (akunMap[t.Akun] || 0) + keluar;
+            totalMasuk += Number(t.Masuk) || 0;
+            totalKeluar += Number(t.Keluar) || 0;
         });
 
+        // Render Summary Cards
         document.getElementById('summaryCards').innerHTML = `
             <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
                 <h3 class="text-gray-500 text-sm">Total Masuk</h3>
@@ -370,23 +414,159 @@
             </div>
         `;
 
-        const ctxP = document.getElementById('chartProject').getContext('2d');
-        if(chartProjectInstance) chartProjectInstance.destroy();
-        chartProjectInstance = new Chart(ctxP, {
+        // Render Charts berdasarkan mode
+        if(dashViewMode === 'tahunan') {
+            renderChartTahunan(trans, tahun);
+        } else {
+            renderChartsBulanan(trans);
+        }
+    }
+
+    // 3. Render Chart Bulanan (Pemasukan & Pengeluaran per Project/Akun)
+    function renderChartsBulanan(trans) {
+        const masukProjectMap = {}, keluarProjectMap = {};
+        const masukAkunMap = {}, keluarAkunMap = {};
+
+        trans.forEach(t => {
+            const masuk = Number(t.Masuk) || 0;
+            const keluar = Number(t.Keluar) || 0;
+            
+            masukProjectMap[t.JenisProject] = (masukProjectMap[t.JenisProject] || 0) + masuk;
+            keluarProjectMap[t.JenisProject] = (keluarProjectMap[t.JenisProject] || 0) + keluar;
+            
+            masukAkunMap[t.Akun] = (masukAkunMap[t.Akun] || 0) + masuk;
+            keluarAkunMap[t.Akun] = (keluarAkunMap[t.Akun] || 0) + keluar;
+        });
+
+        const colors = ['#10B981','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#EC4899'];
+
+        // Chart Masuk Project
+        const ctxMP = document.getElementById('chartMasukProject').getContext('2d');
+        if(chartMasukProjectInstance) chartMasukProjectInstance.destroy();
+        chartMasukProjectInstance = new Chart(ctxMP, {
             type: 'doughnut',
-            data: { labels: Object.keys(projectMap), datasets: [{ data: Object.values(projectMap), backgroundColor: ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF'] }] },
+            data: { labels: Object.keys(masukProjectMap), datasets: [{ data: Object.values(masukProjectMap), backgroundColor: colors }] },
+            options: { responsive: true, plugins: { title: { display: true, text: 'Pemasukan per Project' } } }
+        });
+
+        // Chart Keluar Project (yang lama, dipertahankan)
+        const ctxKP = document.getElementById('chartKeluarProject').getContext('2d');
+        if(chartProjectInstance) chartProjectInstance.destroy();
+        chartProjectInstance = new Chart(ctxKP, {
+            type: 'doughnut',
+            data: { labels: Object.keys(keluarProjectMap), datasets: [{ data: Object.values(keluarProjectMap), backgroundColor: colors }] },
             options: { responsive: true, plugins: { title: { display: true, text: 'Pengeluaran per Project' } } }
         });
 
-        const ctxA = document.getElementById('chartAkun').getContext('2d');
-        if(chartAkunInstance) chartAkunInstance.destroy();
-        chartAkunInstance = new Chart(ctxA, {
+        // Chart Masuk Akun
+        const ctxMA = document.getElementById('chartMasukAkun').getContext('2d');
+        if(chartMasukAkunInstance) chartMasukAkunInstance.destroy();
+        chartMasukAkunInstance = new Chart(ctxMA, {
             type: 'doughnut',
-            data: { labels: Object.keys(akunMap), datasets: [{ data: Object.values(akunMap), backgroundColor: ['#E7E9ED','#36A2EB','#FFCE56'] }] },
+            data: { labels: Object.keys(masukAkunMap), datasets: [{ data: Object.values(masukAkunMap), backgroundColor: colors }] },
+            options: { responsive: true, plugins: { title: { display: true, text: 'Pemasukan per Akun' } } }
+        });
+
+        // Chart Keluar Akun (yang lama, dipertahankan)
+        const ctxKA = document.getElementById('chartKeluarAkun').getContext('2d');
+        if(chartAkunInstance) chartAkunInstance.destroy();
+        chartAkunInstance = new Chart(ctxKA, {
+            type: 'doughnut',
+            data: { labels: Object.keys(keluarAkunMap), datasets: [{ data: Object.values(keluarAkunMap), backgroundColor: colors }] },
             options: { responsive: true, plugins: { title: { display: true, text: 'Pengeluaran per Akun' } } }
         });
     }
 
+    // 4. Render Chart Tahunan (Bar + Trendline Saldo)
+    function renderChartTahunan(trans, tahun) {
+        const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+        const masukPerBulan = new Array(12).fill(0);
+        const keluarPerBulan = new Array(12).fill(0);
+        const saldoPerBulan = new Array(12).fill(0);
+
+        let runningSaldo = 0;
+
+        trans.forEach(t => {
+            const d = new Date(t.Tanggal);
+            const monthIdx = d.getMonth(); // 0-11
+            const masuk = Number(t.Masuk) || 0;
+            const keluar = Number(t.Keluar) || 0;
+            
+            masukPerBulan[monthIdx] += masuk;
+            keluarPerBulan[monthIdx] += keluar;
+        });
+
+        // Hitung saldo kumulatif untuk trendline
+        for(let i=0; i<12; i++) {
+            runningSaldo += (masukPerBulan[i] - keluarPerBulan[i]);
+            saldoPerBulan[i] = runningSaldo;
+        }
+
+        const ctxT = document.getElementById('chartTahunan').getContext('2d');
+        if(chartTahunanInstance) chartTahunanInstance.destroy();
+        
+        chartTahunanInstance = new Chart(ctxT, {
+            type: 'bar',
+            data: {
+                labels: monthLabels,
+                datasets: [
+                    {
+                        label: 'Pemasukan',
+                        data: masukPerBulan,
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)', // Green
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Pengeluaran',
+                        data: keluarPerBulan,
+                        backgroundColor: 'rgba(239, 68, 68, 0.7)', // Red
+                        borderColor: 'rgba(239, 68, 68, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Trendline Saldo',
+                        data: saldoPerBulan,
+                        type: 'line', // Tipe campuran: Line di atas Bar
+                        borderColor: 'rgba(59, 130, 246, 1)', // Blue
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.3, // Membuat garis sedikit melengkung
+                        pointRadius: 5,
+                        pointBackgroundColor: 'rgba(59, 130, 246, 1)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'Rp ' + value.toLocaleString('id-ID');
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    title: { display: true, text: `Laporan Keuangan Tahun ${tahun}`, font: { size: 18 } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) { label += ': '; }
+                                label += 'Rp ' + context.parsed.y.toLocaleString('id-ID');
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
     // --- TRANSACTIONS ---
     async function loadTransactions() {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({action: 'getTransactions'}) });
