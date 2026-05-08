@@ -699,7 +699,7 @@
         });
     }
 
-    // --- ADMIN: KELOLA USER ---
+    // --- ADMIN: KELOLA USER (UPDATED) ---
     async function loadUsers() {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({action: 'getUsers'}) });
         const data = await res.json();
@@ -710,20 +710,29 @@
         data.data.forEach(u => {
             const isWaiting = u.Role === 'WAITING';
             const isSelf = u.Email === currentUser.email;
+            
             tbody.innerHTML += `
-                <tr class="border-b">
-                    <td class="p-2">${u.Email}</td>
-                    <td class="p-2">${u.Nama}</td>
-                    <td class="p-2 font-bold ${isWaiting ? 'text-yellow-600' : 'text-green-600'}">${u.Role}</td>
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="p-2 text-sm">${u.Email}</td>
+                    <td class="p-2 text-sm font-medium">${u.Nama}</td>
+                    <td class="p-2 font-bold ${isWaiting ? 'text-yellow-600' : 'text-green-600'} text-sm">${u.Role}</td>
                     <td class="p-2">
                         ${!isSelf ? `
-                        <select onchange="updateUserRole('${u.Email}', this.value)" class="border rounded p-1 text-sm">
-                            <option value="WAITING" ${u.Role==='WAITING'?'selected':''}>WAITING</option>
-                            <option value="PENGUSAHA" ${u.Role==='PENGUSAHA'?'selected':''}>PENGUSAHA</option>
-                            <option value="PENGELOLA" ${u.Role==='PENGELOLA'?'selected':''}>PENGELOLA</option>
-                            <option value="ADMIN" ${u.Role==='ADMIN'?'selected':''}>ADMIN</option>
-                        </select>
-                        ` : '<span class="text-gray-400 text-sm">Akun Sendiri</span>'}
+                        <div class="flex items-center gap-2">
+                            <select onchange="updateUserRole('${u.Email}', this.value)" class="border rounded p-1 text-sm flex-1">
+                                <option value="WAITING" ${u.Role==='WAITING'?'selected':''}>WAITING</option>
+                                <option value="PENGUSAHA" ${u.Role==='PENGUSAHA'?'selected':''}>PENGUSAHA</option>
+                                <option value="PENGELOLA" ${u.Role==='PENGELOLA'?'selected':''}>PENGELOLA</option>
+                                <option value="ADMIN" ${u.Role==='ADMIN'?'selected':''}>ADMIN</option>
+                            </select>
+                            <button onclick="editUserName('${u.Email}', '${u.Nama}')" class="text-blue-500 hover:text-blue-700 p-1" title="Edit Nama">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteUser('${u.Email}')" class="text-red-500 hover:text-red-700 p-1" title="Hapus User">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        ` : '<span class="text-gray-400 text-xs">Akun Sendiri</span>'}
                     </td>
                 </tr>
             `;
@@ -737,6 +746,41 @@
         }
     }
 
+    // Fungsi baru: Edit Nama User
+    async function editUserName(email, currentName) {
+        const newName = prompt("Edit Nama User:", currentName);
+        if (newName !== null && newName.trim() !== "" && newName.trim() !== currentName) {
+            const res = await fetch(WEB_APP_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({action: 'editUserName', email: email, newName: newName.trim()}) 
+            });
+            const data = await res.json();
+            if(data.status === 'success') {
+                alert("Nama berhasil diubah!");
+                loadUsers();
+            } else {
+                alert("Gagal: " + data.message);
+            }
+        }
+    }
+
+    // Fungsi baru: Hapus User
+    async function deleteUser(email) {
+        if(confirm(`Hapus user ${email}?\nPenghapusan ini akan me-reset aksesnya. Jika ia login kembali, akan masuk WAITING LIST.`)) {
+            const res = await fetch(WEB_APP_URL, { 
+                method: 'POST', 
+                body: JSON.stringify({action: 'deleteUser', email: email}) 
+            });
+            const data = await res.json();
+            if(data.status === 'success') {
+                alert("User berhasil dihapus!");
+                loadUsers();
+            } else {
+                alert("Gagal: " + data.message);
+            }
+        }
+    }
+    
     // --- ADMIN: KELOLA OPSI ---
     // --- FUNGSI BARU UNTUK KELOLA OPSI ---
 
