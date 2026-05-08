@@ -117,29 +117,34 @@
                     </div>
                 </div>
 
-                 <!-- ADMIN OPTIONS VIEW -->
+                <!-- ADMIN OPTIONS VIEW -->
                  <div id="viewAdminOptions" class="hidden">
                     <h2 class="text-2xl font-bold mb-6">Kelola Opsi (Project & Akun)</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        
+                        <!-- Kolom Kiri: Project -->
                         <div class="bg-white p-6 rounded-lg shadow">
                             <h3 class="font-bold mb-4">Jenis Project</h3>
                             <div class="flex gap-2 mb-4">
                                 <input type="text" id="newProject" class="border rounded p-2 flex-1" placeholder="Tambah project baru">
-                                <button onclick="addOption('jenisProject')" class="bg-green-500 text-white px-4 rounded">Tambah</button>
+                                <button onclick="addOption('jenisProject')" class="bg-green-500 text-white px-4 rounded hover:bg-green-600">Tambah</button>
                             </div>
-                            <ul id="listProject" class="list-disc pl-5 text-gray-700"></ul>
+                            <!-- GANTI UL MENJADI DIV -->
+                            <div id="listProject" class="flex flex-col gap-2 max-h-60 overflow-y-auto"></div>
                         </div>
+
+                        <!-- Kolom Kanan: Akun -->
                         <div class="bg-white p-6 rounded-lg shadow">
                             <h3 class="font-bold mb-4">Akun</h3>
                             <div class="flex gap-2 mb-4">
                                 <input type="text" id="newAkun" class="border rounded p-2 flex-1" placeholder="Tambah akun baru">
-                                <button onclick="addOption('akun')" class="bg-green-500 text-white px-4 rounded">Tambah</button>
+                                <button onclick="addOption('akun')" class="bg-green-500 text-white px-4 rounded hover:bg-green-600">Tambah</button>
                             </div>
-                            <ul id="listAkun" class="list-disc pl-5 text-gray-700"></ul>
+                            <!-- GANTI UL MENJADI DIV -->
+                            <div id="listAkun" class="flex flex-col gap-2 max-h-60 overflow-y-auto"></div>
                         </div>
                     </div>
                 </div>
-
             </main>
         </div>
     </div>
@@ -290,7 +295,7 @@
         if (viewName === 'dashboard') loadDashboard();
         if (viewName === 'transactions') loadTransactions();
         if (viewName === 'adminUsers') loadUsers();
-        if (viewName === 'adminOptions') loadOptionsList();
+        if (viewName === 'adminOptions') renderOptionsList();
     }
 
     // --- LOAD OPTIONS (DROPDOWN) ---
@@ -553,24 +558,75 @@
     }
 
     // --- ADMIN: KELOLA OPSI ---
-    function loadOptionsList() {
-        const pList = document.getElementById('listProject');
-        const aList = document.getElementById('listAkun');
-        pList.innerHTML = appOptions.jenisProject.map(p => `<li>${p}</li>`).join('');
-        aList.innerHTML = appOptions.akun.map(a => `<li>${a}</li>`).join('');
+    // --- FUNGSI BARU UNTUK KELOLA OPSI ---
+
+    // 1. Render tampilan daftar opsi (dengan tombol Edit & Hapus)
+    function renderOptionsList() {
+      const pList = document.getElementById('listProject');
+      const aList = document.getElementById('listAkun');
+      
+      pList.innerHTML = appOptions.jenisProject.map((p, i) => `
+        <div class="flex justify-between items-center py-2 px-3 bg-gray-50 rounded border border-gray-200">
+          <span class="font-medium text-gray-700">${p}</span>
+          <div class="flex gap-3">
+            <button onclick="editOption('jenisProject', ${i})" class="text-blue-500 hover:text-blue-700 text-sm"><i class="fas fa-edit"></i></button>
+            <button onclick="deleteOption('jenisProject', ${i})" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      `).join('');
+      
+      aList.innerHTML = appOptions.akun.map((a, i) => `
+        <div class="flex justify-between items-center py-2 px-3 bg-gray-50 rounded border border-gray-200">
+          <span class="font-medium text-gray-700">${a}</span>
+          <div class="flex gap-3">
+            <button onclick="editOption('akun', ${i})" class="text-blue-500 hover:text-blue-700 text-sm"><i class="fas fa-edit"></i></button>
+            <button onclick="deleteOption('akun', ${i})" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      `).join('');
     }
 
+    // 2. Fungsi simpan seluruh array ke Google Sheet
+    async function saveOptionsToSheet() {
+      await fetch(WEB_APP_URL, { 
+        method: 'POST', 
+        body: JSON.stringify({ action: 'saveOptions', data: appOptions }) 
+      });
+    }
+
+    // 3. Fungsi Tambah Opsi Baru
     async function addOption(type) {
-        const inputId = type === 'jenisProject' ? 'newProject' : 'newAkun';
-        const val = document.getElementById(inputId).value.trim();
-        if(!val) return;
+      const inputId = type === 'jenisProject' ? 'newProject' : 'newAkun';
+      const val = document.getElementById(inputId).value.trim();
+      if(!val) return;
 
-        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({action: 'addOption', type, value: val}) });
-        await loadOptions();
-        loadOptionsList();
-        document.getElementById(inputId).value = '';
+      appOptions[type].push(val); // Masukkan ke array lokal
+      await saveOptionsToSheet(); // Kirim seluruh array ke Sheet
+      renderOptionsList(); // Render ulang tampilan
+      document.getElementById(inputId).value = ''; // Kosongkan input
     }
 
+    // 4. Fungsi Edit Opsi
+      async function editOption(type, index) {
+      const oldName = appOptions[type][index];
+      const newName = prompt("Edit nama:", oldName);
+      
+      if (newName !== null && newName.trim() !== "" && newName.trim() !== oldName) {
+        appOptions[type][index] = newName.trim(); // Update array lokal
+        await saveOptionsToSheet(); // Kirim ke Sheet
+        renderOptionsList(); // Render ulang
+        }
+      }
+
+    // 5. Fungsi Hapus Opsi
+    async function deleteOption(type, index) {
+      const name = appOptions[type][index];
+      if(confirm(`Hapus "${name}"?`)) {
+        appOptions[type].splice(index, 1); // Hapus dari array lokal
+        await saveOptionsToSheet(); // Kirim ke Sheet
+        renderOptionsList(); // Render ulang
+      }
+    }
     // --- CEK SESSION SAAT LOAD ---
     window.onload = () => {
         const saved = localStorage.getItem('kasUser');
